@@ -1,12 +1,14 @@
 [firewall]
-firewallVM ansible_user=punopaughey
+firewallVM
 
-[appserver]
-applicationVM ansible_user=punopaughey
+[appservers]
+applicationVM
 
-[dbserver]
-databaseVM ansible_user=punopaughey
+[dbservers]
+databaseVM
 
-[endpoint]
-endpointVM ansible_user=punopaughey
+[endpoints]
+endpointVM
 
+[all:vars]
+ansible_user=punopaughey
