@@ -1,0 +1,214 @@
+---
+- name: Configure Firewall VM
+  hosts: firewall
+  become: yes
+  tasks:
+    - name: Install UFW and Fail2Ban
+      apt:
+        name:
+          - ufw
+          - fail2ban
+        state: present
+        update_cache: yes
+
+    - name: Setup UFW default policies
+      ufw:
+        state: enabled
+        logging: on
+        default: deny incoming
+        direction: incoming
+
+    - name: Allow SSH through UFW
+      ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Allow HTTP and HTTPS through UFW
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - 80
+        - 443
+
+    - name: Enable UFW
+      command: ufw enable
+      args:
+        warn: false
+      when: ansible_facts.ufw.status != "active"
+
+    - name: Configure Fail2Ban for SSH
+      copy:
+        dest: /etc/fail2ban/jail.local
+        content: |
+          [sshd]
+          enabled = true
+          port    = ssh
+          filter  = sshd
+          logpath = /var/log/auth.log
+          maxretry = 5
+      notify:
+        - restart fail2ban
+
+  handlers:
+    - name: restart fail2ban
+      service:
+        name: fail2ban
+        state: restarted
+
+- name: Configure Application Server VM
+  hosts: appservers
+  become: yes
+  tasks:
+    - name: Install updates and security packages
+      apt:
+        name:
+          - ufw
+        state: latest
+        update_cache: yes
+
+    - name: Setup UFW default policies
+      ufw:
+        state: enabled
+        logging: on
+        default: deny incoming
+        direction: incoming
+
+    - name: Allow SSH and HTTP(S) through UFW
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - 22
+        - 80
+        - 443
+
+    - name: Enable UFW
+      command: ufw enable
+      args:
+        warn: false
+      when: ansible_facts.ufw.status != "active"
+
+    - name: Harden SSH config - disable root login and password auth
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+      notify:
+        - restart ssh
+
+  handlers:
+    - name: restart ssh
+      service:
+        name: ssh
+        state: restarted
+
+- name: Configure Database Server VM
+  hosts: dbservers
+  become: yes
+  tasks:
+    - name: Install updates and ufw
+      apt:
+        name:
+          - ufw
+        state: latest
+        update_cache: yes
+
+    - name: Harden SSH config - disable root login and password auth
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+      notify:
+        - restart ssh
+
+    - name: Setup UFW default policies
+      ufw:
+        state: enabled
+        logging: on
+        default: deny incoming
+        direction: incoming
+
+    - name: Allow SSH from trusted subnets only (example 192.168.56.0/24)
+      ufw:
+        rule: allow
+        port: 22
+        proto: tcp
+        from_ip: 192.168.56.0/24
+
+    - name: Enable UFW
+      command: ufw enable
+      args:
+        warn: false
+      when: ansible_facts.ufw.status != "active"
+
+  handlers:
+    - name: restart ssh
+      service:
+        name: ssh
+        state: restarted
+
+- name: Configure Endpoint VM
+  hosts: endpoints
+  become: yes
+  tasks:
+    - name: Install antivirus (ClamAV)
+      apt:
+        name:
+          - clamav
+          - clamav-daemon
+          - ufw
+        state: present
+        update_cache: yes
+
+    - name: Update antivirus database
+      command: freshclam
+      changed_when: false
+
+    - name: Setup daily antivirus scan cron job
+      cron:
+        name: "Daily ClamAV scan"
+        minute: 0
+        hour: 3
+        job: "/usr/bin/clamscan -r /home"
+
+    - name: Setup UFW default policies
+      ufw:
+        state: enabled
+        logging: on
+        default: deny incoming
+        direction: incoming
+
+    - name: Allow SSH through UFW
+      ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Enable UFW
+      command: ufw enable
+      args:
+        warn: false
+      when: ansible_facts.ufw.status != "active"
+
+    - name: Configure unattended-upgrades for automatic security updates
+      apt:
+        name: unattended-upgrades
+        state: present
+
+    - name: Enable unattended upgrades
+      copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+
