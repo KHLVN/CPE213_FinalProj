@@ -1,4 +1,5 @@
 ---
+# Firewall Nodes
 - name: Configure Firewall VM
   hosts: firewall
   become: yes
@@ -57,6 +58,7 @@
         name: fail2ban
         state: restarted
 
+# Application Server Nodes
 - name: Configure Application Server VM
   hosts: appservers
   become: yes
@@ -109,6 +111,7 @@
         name: ssh
         state: restarted
 
+# Database Server Nodes
 - name: Configure Database Server VM
   hosts: dbservers
   become: yes
@@ -139,7 +142,7 @@
         default: deny incoming
         direction: incoming
 
-    - name: Allow SSH from trusted subnets only (example 192.168.56.0/24)
+    - name: Allow SSH from trusted network
       ufw:
         rule: allow
         port: 22
@@ -158,6 +161,7 @@
         name: ssh
         state: restarted
 
+# Endpoint Nodes
 - name: Configure Endpoint VM
   hosts: endpoints
   become: yes
@@ -211,4 +215,3 @@
         content: |
           APT::Periodic::Update-Package-Lists "1";
           APT::Periodic::Unattended-Upgrade "1";
-
